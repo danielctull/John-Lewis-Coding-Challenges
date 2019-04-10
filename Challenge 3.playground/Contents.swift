@@ -1,24 +1,21 @@
 
+// MARK: - Core types
+
 struct Board {
     let spaces: [[Space]]
     var player: Position
     var boxes: [Position]
 }
 
-extension Board {
-
-    struct Space {
-        let kind: Kind
-    }
+enum Space {
+    case empty
+    case wall
+    case storage
 }
 
-extension Board.Space {
-
-    enum Kind {
-        case empty
-        case wall
-        case storage
-    }
+struct Position: Equatable {
+    let x: Int
+    let y: Int
 }
 
 enum Direction {
@@ -28,21 +25,35 @@ enum Direction {
     case right
 }
 
+struct PositionError: Swift.Error {
+    let reason: String
+    let position: Position
+}
+
+// MARK: - Initialization
+
 extension Direction {
 
     init(_ character: Character) throws {
         struct UnknownDirectionError: Error {}
         switch character {
-        case "U": self = .up
-        case "D": self = .down
-        case "L": self = .left
-        case "R": self = .right
+        case "U", "u": self = .up
+        case "D", "d": self = .down
+        case "L", "l": self = .left
+        case "R", "r": self = .right
         default: throw UnknownDirectionError()
         }
     }
 }
 
-extension Board.Space.Kind {
+extension Array where Element == Direction {
+
+    init(string: String) throws {
+        self = try string.map(Direction.init)
+    }
+}
+
+extension Space {
 
     init(_ character: Character) {
         switch character {
@@ -53,21 +64,11 @@ extension Board.Space.Kind {
     }
 }
 
-struct Position: Equatable {
-    let x: Int
-    let y: Int
-}
-
 extension Board {
 
     init(array: [String]) throws {
 
-        spaces = array.map { line in
-            line.map { character in
-                let kind = Board.Space.Kind(character)
-                return Board.Space(kind: kind)
-            }
-        }
+        spaces = array.map { $0.map(Space.init) }
 
         func positions(of characters: [Character]) -> [Position] {
 
@@ -81,9 +82,17 @@ extension Board {
             }
         }
 
-        player = positions(of: ["p", "P"]).first!
+        struct NoPlayerError: Error {}
+        guard let player = positions(of: ["p", "P"]).first else { throw NoPlayerError() }
+
+        self.player = player
         boxes = positions(of: ["b", "B"])
     }
+}
+
+// MARK: - Output
+
+extension Board {
 
     var array: [String] {
 
@@ -91,16 +100,16 @@ extension Board {
             y.element.enumerated().map { x in
 
                 let position = Position(x: x.offset, y: y.offset)
-                let kind = x.element.kind
+                let space = x.element
                 let isPlayer = position == player
                 let isBox = boxes.contains(position)
 
-                switch (kind, isPlayer, isBox) {
+                switch (space, isPlayer, isBox) {
                 case (.empty, true, false): return "p"
                 case (.storage, true, false): return "P"
                 case (.empty, false, true): return "b"
                 case (.storage, false, true): return "B"
-                default: return kind.description
+                default: return space.description
                 }
 
             }.joined()
@@ -115,7 +124,7 @@ extension Board: CustomStringConvertible {
     }
 }
 
-extension Board.Space.Kind: CustomStringConvertible {
+extension Space: CustomStringConvertible {
 
     var description: String {
         switch self {
@@ -126,31 +135,33 @@ extension Board.Space.Kind: CustomStringConvertible {
     }
 }
 
+extension Position: CustomStringConvertible {
+
+    var description: String {
+        return "(x: \(x), y: \(y))"
+    }
+}
+
+// MARK: - Logic
+
 extension Board {
 
-    func positions(of kind: Board.Space.Kind) -> [Position] {
+    private func positions(of space: Space) -> [Position] {
         return spaces.enumerated().flatMap { y in
             return y.element.enumerated().compactMap { x in
-                guard x.element.kind == kind else { return nil }
+                guard x.element == space else { return nil }
                 return Position(x: x.offset, y: y.offset)
             }
         }
     }
 
-    mutating func move(_ directions: [Direction]) throws {
-        for direction in directions {
-            try move(direction)
-        }
-    }
-
-    mutating func move(_ direction: Direction) throws {
+    mutating func move(in direction: Direction) throws {
 
         let newPlayer = player.moving(in: direction)
 
-        struct PlayerOnWallError: Error {
-            let position: Position
+        guard !positions(of: .wall).contains(newPlayer) else {
+            throw PositionError(reason: "Player on Wall", position: newPlayer)
         }
-        guard !positions(of: .wall).contains(newPlayer) else { throw PlayerOnWallError(position: newPlayer) }
 
         let newBoxes = try boxes.map { box -> Position in
 
@@ -158,15 +169,13 @@ extension Board {
 
             let newBox = box.moving(in: direction)
 
-            struct BoxOnWallError: Error {
-                let position: Position
+            guard !positions(of: .wall).contains(newBox) else {
+                throw PositionError(reason: "Box on Wall", position: newBox)
             }
-            guard !positions(of: .wall).contains(newBox) else { throw BoxOnWallError(position: newBox) }
 
-            struct BoxOnBoxError: Error {
-                let position: Position
+            guard !boxes.contains(newBox) else {
+                throw PositionError(reason: "Box on Box", position: newBox)
             }
-            guard !boxes.contains(newBox) else { throw BoxOnBoxError(position: newBox) }
 
             return newBox
         }
@@ -187,26 +196,43 @@ extension Position {
     }
 }
 
-extension Array where Element == Direction {
+// MARK: - Challenge Functions
 
-    init(string: String) throws {
-        self = try string.map(Direction.init)
+func processSokobanMove(board stringBoard: [String], move stringMove: String) -> [String] {
+
+    guard let move = stringMove.first else { return [] }
+
+    do {
+        var board = try Board(array: stringBoard)
+        let direction = try Direction(move)
+        try board.move(in: direction)
+        return board.array
+
+    } catch {
+        print(error)
+        return []
     }
 }
 
+// MARK: - Running the thing
+
+let start = ["#############",
+             "#p        * #",
+             "#     b  b  #",
+             "# *         #",
+             "#############"]
+
+//let new = processSokobanMove(board: start, move: "R")
+//print(new)
+
 do {
 
-    var board = try Board(array: ["#############",
-                                  "#p        * #",
-                                  "#     b  b  #",
-                                  "# *         #",
-                                  "#############"])
-
+    var board = try Board(array: start)
     print(board)
 
     let directions = try Array(string: "RRRRRDRDLLLLRRRRRRULUR")
     for direction in directions {
-        try board.move(direction)
+        try board.move(in: direction)
         print(board)
     }
 
