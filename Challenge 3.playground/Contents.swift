@@ -25,8 +25,15 @@ enum Direction {
     case right
 }
 
-struct PositionError: Swift.Error {
-    let reason: String
+struct MovementError: Swift.Error {
+    
+    enum Reason {
+        case playerOnWall
+        case boxOnWall
+        case boxOnBox
+    }
+    
+    let reason: Reason
     let position: Position
 }
 
@@ -160,7 +167,7 @@ extension Board {
         let newPlayer = player.moving(in: direction)
 
         guard !positions(of: .wall).contains(newPlayer) else {
-            throw PositionError(reason: "Player on Wall", position: newPlayer)
+            throw MovementError(reason: .playerOnWall, position: newPlayer)
         }
 
         let newBoxes = try boxes.map { box -> Position in
@@ -170,11 +177,11 @@ extension Board {
             let newBox = box.moving(in: direction)
 
             guard !positions(of: .wall).contains(newBox) else {
-                throw PositionError(reason: "Box on Wall", position: newBox)
+                throw MovementError(reason: .boxOnWall, position: newBox)
             }
 
             guard !boxes.contains(newBox) else {
-                throw PositionError(reason: "Box on Box", position: newBox)
+                throw MovementError(reason: .boxOnBox, position: newBox)
             }
 
             return newBox
